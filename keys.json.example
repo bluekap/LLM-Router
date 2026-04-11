@@ -1,0 +1,45 @@
+{
+  "groq": [
+    {
+      "model_id": "llama3-70b-8192",
+      "api_key": "YOUR_GROQ_API_KEY_1",
+      "priority": 1,
+      "daily_limit": 1000
+    },
+    {
+      "model_id": "llama3-8b-8192",
+      "api_key": "YOUR_GROQ_API_KEY_2",
+      "priority": 1
+    }
+  ],
+  "gemini": [
+    {
+      "model_id": "gemini-1.5-pro",
+      "api_key": "YOUR_GEMINI_API_KEY",
+      "priority": 1,
+      "daily_limit": 100
+    }
+  ],
+  "mistral": [
+    {
+      "model_id": "mistral-large-latest",
+      "api_key": "YOUR_MISTRAL_API_KEY",
+      "priority": 1
+    }
+  ],
+  "openrouter": [
+    {
+      "model_id": "openrouter/free",
+      "api_key": "YOUR_OPENROUTER_API_KEY",
+      "priority": 2,
+      "daily_limit": 50
+    }
+  ],
+  "cerebras": [
+    {
+      "model_id": "cerebras-llama3.1-70b",
+      "api_key": "YOUR_CEREBRAS_API_KEY",
+      "priority": 1
+    }
+  ]
+}

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Gateway Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #09090b;
+            --card-bg: #18181b;
+            --border: #27272a;
+            --text: #fafafa;
+            --text-muted: #a1a1aa;
+            --primary: #3b82f6;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            padding: 2rem;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3rem;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            font-size: 0.875rem;
+            font-weight: 500;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            padding: 1.5rem;
+            border-radius: 1rem;
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+
+        .stat-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+        }
+
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .grid-layout {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+        }
+
+        .provider-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+
+        .provider-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            padding: 1.25rem;
+            border-radius: 0.75rem;
+        }
+
+        .provider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            text-transform: capitalize;
+            font-weight: 600;
+        }
+
+        .provider-stats {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.875rem;
+        }
+
+        .pill {
+            padding: 0.25rem 0.625rem;
+            border-radius: 0.375rem;
+            font-weight: 500;
+        }
+
+        .pill-active { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+        .pill-cooldown { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+        .pill-fail { background: rgba(239, 68, 68, 0.1); color: var(--error); }
+
+        .model-list {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            padding: 1.5rem;
+            border-radius: 1rem;
+            height: fit-content;
+        }
+
+        .model-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0;
+            font-size: 0.875rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .model-item:last-child { border-bottom: none; }
+        
+        .dot { height: 6px; width: 6px; background: var(--primary); border-radius: 50%; }
+
+        @media (max-width: 768px) {
+            .grid-layout { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>LLM Gateway Dashboard</h1>
+            <div id="status" class="status-badge">
+                <span class="dot" style="background: var(--success)"></span>
+                System Operational
+            </div>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Active Keys</div>
+                <div id="active_keys" class="stat-value">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Active Models</div>
+                <div id="active_models" class="stat-value">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Today's Requests</div>
+                <div id="total_requests" class="stat-value">0</div>
+            </div>
+        </div>
+
+        <div class="grid-layout">
+            <div class="providers-section">
+                <h2 class="section-title">Provider Health</h2>
+                <div id="provider_grid" class="provider-grid">
+                    <!-- Providers will be injected here -->
+                </div>
+            </div>
+
+            <div class="models-section">
+                <h2 class="section-title">Active Models</h2>
+                <div id="model_list" class="model-list">
+                    <!-- Models will be injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function updateDashboard() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+
+                // Update Overview
+                document.getElementById('active_keys').textContent = data.active_keys;
+                document.getElementById('active_models').textContent = data.active_models;
+                document.getElementById('total_requests').textContent = data.total_requests_today;
+
+                // Update Status
+                const statusBadge = document.getElementById('status');
+                statusBadge.innerHTML = `<span class="dot" style="background: ${data.status === 'operational' ? 'var(--success)' : 'var(--warning)'}"></span> System ${data.status}`;
+                statusBadge.style.color = data.status === 'operational' ? 'var(--success)' : 'var(--warning)';
+                statusBadge.style.background = data.status === 'operational' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)';
+
+                // Update Providers
+                const providerGrid = document.getElementById('provider_grid');
+                providerGrid.innerHTML = Object.entries(data.provider_health).map(([name, stats]) => `
+                    <div class="provider-card">
+                        <div class="provider-header">${name}</div>
+                        <div class="provider-stats">
+                            <span class="pill pill-active">${stats.active} Active</span>
+                            <span class="pill pill-cooldown">${stats.cooldown} Cooldown</span>
+                            <span class="pill pill-fail">${stats.fail_count} Fails</span>
+                        </div>
+                    </div>
+                `).join('');
+
+                // Update Models
+                const modelList = document.getElementById('model_list');
+                modelList.innerHTML = data.active_model_list.map(model => `
+                    <div class="model-item">
+                        <span class="dot"></span>
+                        ${model}
+                    </div>
+                `).join('') || '<div class="stat-label">No active models</div>';
+
+            } catch (error) {
+                console.error('Failed to update dashboard:', error);
+            }
+        }
+
+        // Update every 5 seconds
+        setInterval(updateDashboard, 5000);
+        updateDashboard();
+    </script>
+</body>
+</html>

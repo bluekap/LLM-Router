@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+litellm
+sqlalchemy
+pydantic
+pydantic-settings
+aiosqlite
+greenlet
+google-generativeai
