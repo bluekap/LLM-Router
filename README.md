@@ -15,7 +15,7 @@ A production-grade Python FastAPI gateway that provides a unified, OpenAI-compat
 
 Powered by [LiteLLM](https://github.com/BerriAI/litellm), this gateway inherently supports 100+ LLMs. The current configuration is optimized for:
 - **Groq** (Llama 3 70B/8B)
-- **Google Gemini** (Gemini 1.5 Pro, Flash)
+- **Google Gemini** (Gemini 3 Flash)
 - **Mistral AI** (Mistral Large)
 - **OpenRouter** (Free tier fallback)
 - **Cerebras** (Ultra-fast Llama 3.1)

@@ -13,6 +13,19 @@ class ChatCompletionRequest(BaseModel):
     stream: Optional[bool] = False
     extra_body: Optional[Dict[str, Any]] = None
 
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "Explain quantum entanglement in one sentence"
+                    }
+                ]
+            }
+        }
+    }
+
 class Choice(BaseModel):
     message: Message
     finish_reason: str
