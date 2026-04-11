@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -143,9 +144,20 @@
             font-weight: 500;
         }
 
-        .pill-active { background: rgba(16, 185, 129, 0.1); color: var(--success); }
-        .pill-cooldown { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
-        .pill-fail { background: rgba(239, 68, 68, 0.1); color: var(--error); }
+        .pill-active {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+
+        .pill-cooldown {
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning);
+        }
+
+        .pill-fail {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--error);
+        }
 
         .model-list {
             background: var(--card-bg);
@@ -164,15 +176,102 @@
             border-bottom: 1px solid var(--border);
         }
 
-        .model-item:last-child { border-bottom: none; }
-        
-        .dot { height: 6px; width: 6px; background: var(--primary); border-radius: 50%; }
+        .model-item:last-child {
+            border-bottom: none;
+        }
+
+        .dot {
+            height: 6px;
+            width: 6px;
+            background: var(--primary);
+            border-radius: 50%;
+        }
+
+        .keys-container {
+            margin-top: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            border-top: 1px solid var(--border);
+            padding-top: 1rem;
+        }
+
+        .key-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+        }
+
+        .key-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .key-header .hash {
+            color: var(--text-muted);
+            font-family: monospace;
+            font-size: 0.75rem;
+            margin-left: 0.5rem;
+            flex-grow: 1;
+        }
+
+        .status-indicator {
+            height: 8px;
+            width: 8px;
+            border-radius: 50%;
+        }
+
+        .active-dot {
+            background: var(--success);
+        }
+
+        .cooldown-dot {
+            background: var(--warning);
+        }
+
+        .key-metrics {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+
+        .usage-bar-container {
+            margin-top: 0.375rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 9999px;
+            height: 4px;
+            overflow: hidden;
+        }
+
+        .usage-bar {
+            height: 100%;
+            border-radius: 9999px;
+            transition: width 0.6s ease, background-color 0.6s ease;
+        }
+
+        .usage-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 0.3rem;
+            opacity: 0.7;
+        }
 
         @media (max-width: 768px) {
-            .grid-layout { grid-template-columns: 1fr; }
+            .grid-layout {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -234,7 +333,58 @@
 
                 // Update Providers
                 const providerGrid = document.getElementById('provider_grid');
-                providerGrid.innerHTML = Object.entries(data.provider_health).map(([name, stats]) => `
+                providerGrid.innerHTML = Object.entries(data.provider_health).map(([name, stats]) => {
+                    const keysHtml = (stats.keys || []).map(k => {
+                        let cooldownText = '';
+                        if (k.status === 'cooldown' && k.cooldown_until) {
+                            const dt = new Date(k.cooldown_until + 'Z'); // ensure it's treated as UTC if possible, or naive UTC from python
+                            const now = new Date();
+                            // Using a simple check because timezone formats vary, backend passes standard ISO.
+                            let seconds = Math.max(0, Math.floor((dt - now) / 1000));
+                            cooldownText = ` <span style="color:var(--warning);font-weight:600;">(wait ${seconds}s)</span>`;
+                        }
+
+                        return `
+                        <div class="key-item">
+                            <div class="key-header">
+                                <strong>${k.model_id}</strong> <span class="hash">[${k.hash}]</span>
+                                <span class="status-indicator ${k.status === 'active' ? 'active-dot' : 'cooldown-dot'}" title="${k.status}"></span>
+                            </div>
+                            <div class="key-metrics">
+                                <span>Uses today: ${k.daily_requests}</span>
+                                <span>Fails: ${k.fail_count}${cooldownText}</span>
+                            </div>
+                            ${(() => {
+                                const used = k.daily_requests;
+                                const limit = k.daily_limit;
+                                const liveRemaining = k.ratelimit_remaining; // bonus if provider sends headers
+
+                                if (limit) {
+                                    const pct = Math.min(100, Math.round((used / limit) * 100));
+                                    const color = pct >= 90 ? 'var(--error)' : pct >= 60 ? 'var(--warning)' : 'var(--success)';
+                                    const liveBadge = liveRemaining != null
+                                        ? `<span style="color:var(--primary);font-weight:600;">· ${liveRemaining} API remaining</span>`
+                                        : '';
+                                    return `
+                                    <div class="usage-bar-container">
+                                        <div class="usage-bar" style="width:${pct}%;background:${color};"></div>
+                                    </div>
+                                    <div class="usage-label">
+                                        <span>${used} / ${limit} requests today ${liveBadge}</span>
+                                        <span>${pct}%</span>
+                                    </div>`;
+                                } else {
+                                    // No limit configured — just show raw count
+                                    return `<div class="usage-label" style="justify-content:flex-start;">
+                                        <span>${used} requests today (no daily limit set)</span>
+                                    </div>`;
+                                }
+                            })()}
+                        </div>
+                        `;
+                    }).join('');
+
+                    return `
                     <div class="provider-card">
                         <div class="provider-header">${name}</div>
                         <div class="provider-stats">
@@ -242,8 +392,12 @@
                             <span class="pill pill-cooldown">${stats.cooldown} Cooldown</span>
                             <span class="pill pill-fail">${stats.fail_count} Fails</span>
                         </div>
+                        <div class="keys-container">
+                            ${keysHtml}
+                        </div>
                     </div>
-                `).join('');
+                    `;
+                }).join('');
 
                 // Update Models
                 const modelList = document.getElementById('model_list');
@@ -264,4 +418,5 @@
         updateDashboard();
     </script>
 </body>
+
 </html>

@@ -174,6 +174,20 @@ class KeyManager:
             )
             await session.execute(stmt)
             await session.commit()
+
+    async def update_ratelimit_headers(self, key: Key, limit: Optional[int], remaining: Optional[int]):
+        """Persists live rate limit data captured from API response headers."""
+        if limit is None and remaining is None:
+            return
+        async with AsyncSessionLocal() as session:
+            values = {}
+            if limit is not None:
+                values["ratelimit_limit"] = limit
+            if remaining is not None:
+                values["ratelimit_remaining"] = remaining
+            stmt = update(KeyMetadata).where(KeyMetadata.api_key_hash == key.key_hash).values(**values)
+            await session.execute(stmt)
+            await session.commit()
             
     async def get_all_status(self):
         async with AsyncSessionLocal() as session:

@@ -29,3 +29,6 @@ class KeyMetadata(Base):
     last_used_timestamp = Column(DateTime, nullable=True)
     daily_request_count = Column(Integer, default=0)
     last_reset_date = Column(DateTime, default=datetime.datetime.utcnow)
+    # Dynamic rate limit data sourced from API response headers
+    ratelimit_limit = Column(Integer, nullable=True)      # x-ratelimit-limit-requests
+    ratelimit_remaining = Column(Integer, nullable=True)  # x-ratelimit-remaining-requests

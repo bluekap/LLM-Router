@@ -41,5 +41,17 @@
       "api_key": "YOUR_CEREBRAS_API_KEY",
       "priority": 1
     }
+  ],
+  "github": [
+    {
+      "model_id": "gpt-4o",
+      "api_key": "YOUR_GITHUB_MODELS_TOKEN",
+      "priority": 1
+    },
+    {
+      "model_id": "deepseek/DeepSeek-V3-0324",
+      "api_key": "YOUR_GITHUB_MODELS_TOKEN",
+      "priority": 1
+    }
   ]
 }
