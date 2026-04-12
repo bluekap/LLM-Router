@@ -2,8 +2,11 @@ import time
 import asyncio
 import logging
 from typing import List, Optional, Any, Dict
+import litellm
 from litellm import acompletion, exceptions
 from .key_manager import KeyManager, Key
+
+litellm.drop_params = True
 from db.models import RequestLog
 from db.database import AsyncSessionLocal
 from schemas import ChatCompletionRequest
@@ -184,9 +187,15 @@ class LLMGateway:
                 continue # Try next key
                 
             except Exception as e:
-                logger.error(f"Unexpected error with {key.provider}: {str(e)}")
+                latency = (time.time() - start_time) * 1000
+                logger.error(f"Unexpected error with {key.provider}: {str(e)}. Trying next key...")
+                
+                await self.key_manager.mark_fail(key, cooldown_seconds=60)
+                await self._log_request(key, key.model_id, None, latency, getattr(e, 'status_code', 500), str(e))
+                
                 last_exception = e
-                break # Non-retryable error potentially
+                retries += 1
+                continue
                 
         if last_exception:
             raise last_exception

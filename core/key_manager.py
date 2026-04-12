@@ -9,6 +9,9 @@ from sqlalchemy import select, update
 from db.models import KeyMetadata, RequestLog
 from db.database import AsyncSessionLocal
 
+from collections import defaultdict
+
+
 logger = logging.getLogger("LLM-Gateway")
 
 class Key:
@@ -29,7 +32,7 @@ class KeyManager:
         self.config_path = config_path
         self.keys: List[Key] = []
         self._load_keys()
-        self.index = 0 # For round-robin
+        self.priority_indices = defaultdict(int)
 
     def _load_keys(self):
         if not os.path.exists(self.config_path):
@@ -63,80 +66,159 @@ class KeyManager:
             print(f"Error loading keys: {e}")
 
     async def sync_with_db(self):
-        """Ensures all loaded keys have entries in the database."""
+        """Syncs the DB with the current keys.json:
+        - Inserts any new keys that are not yet in the DB (preserving stats for existing ones).
+        - Removes any DB entries whose key_hash is no longer present in keys.json.
+        """
+        active_hashes = {key.key_hash for key in self.keys}
+
         async with AsyncSessionLocal() as session:
+            # Fetch all currently stored key hashes from DB
+            result = await session.execute(select(KeyMetadata))
+            db_keys = result.scalars().all()
+            db_hashes = {km.api_key_hash for km in db_keys}
+
+            # --- Insert new keys ---
+            new_hashes = active_hashes - db_hashes
+            added = 0
             for key in self.keys:
-                stmt = select(KeyMetadata).where(KeyMetadata.api_key_hash == key.key_hash)
-                result = await session.execute(stmt)
-                if not result.scalar_one_or_none():
-                    metadata = KeyMetadata(
+                if key.key_hash in new_hashes:
+                    session.add(KeyMetadata(
                         provider=key.provider,
                         model_id=key.model_id,
-                        api_key_hash=key.key_hash
-                    )
-                    session.add(metadata)
-            await session.commit()
-            logger.info(f"Synchronized {len(self.keys)} keys with database.")
+                        api_key_hash=key.key_hash,
+                        priority=key.priority
+                    ))
+                    logger.info(f"[sync] NEW key added to DB: {key.provider} / {key.model_id} (P{key.priority}) ({key.key_hash[:8]})")
+                    added += 1
 
+            # --- Update priority for existing keys (in case keys.json changed) ---
+            for key in self.keys:
+                if key.key_hash in db_hashes:
+                    await session.execute(
+                        update(KeyMetadata)
+                        .where(KeyMetadata.api_key_hash == key.key_hash)
+                        .values(priority=key.priority)
+                    )
+
+            # --- Remove stale keys ---
+            removed_hashes = db_hashes - active_hashes
+            removed = 0
+            for km in db_keys:
+                if km.api_key_hash in removed_hashes:
+                    logger.warning(f"[sync] REMOVED stale key from DB: {km.provider} / {km.model_id} ({km.api_key_hash[:8]})")
+                    await session.delete(km)
+                    removed += 1
+
+            await session.commit()
+            logger.info(f"[sync] DB sync complete — {len(self.keys)} active keys | +{added} added | -{removed} removed")
+
+    
     async def get_healthiest_key(self, provider: Optional[str] = None) -> Optional[Key]:
         """
-        Implementation of Healthiest selector:
-        - Must be Active (not in cooldown)
-        - Least fail count (from DB)
-        - Least recently used (from DB)
-        - Filtered by provider if specified
+        Selects the best available API key using a priority-aware round-robin strategy.
+
+        Selection strategy:
+        1. Keys are grouped by priority (lower number = higher priority, e.g., P1 before P2).
+        2. The system always attempts to select from the highest available priority tier first.
+        3. Within a priority tier, keys are distributed using round-robin to ensure fair usage
+        across keys and models (prevents a single key/model from being overused).
+        4. Within the round-robin group, keys are lightly sorted by `fail_count` to prefer
+        healthier keys without sacrificing fairness.
+        5. Keys with excessive failures (fail_count >= 5) are temporarily skipped.
+        6. Keys in cooldown or inactive state are excluded.
+        7. Daily request limits are enforced per key:
+        - If the limit is reached and it's the same UTC day → key is skipped.
+        - If it's a new UTC day → the counter is reset automatically.
+
+        Additional behavior:
+        - If a provider is specified, only keys matching that provider are considered.
+        - Round-robin state is maintained per priority tier using an in-memory index.
+        - If no valid keys are available in any priority tier, returns None.
+
+        Args:
+            provider (Optional[str]): Optional provider filter (e.g., "openai", "anthropic").
+
+        Returns:
+            Optional[Key]: The selected Key object, or None if no valid key is available.
         """
         async with AsyncSessionLocal() as session:
-            # Refresh DB entries for all loaded keys if they don't exist
-            # Note: Now primarily handled by sync_with_db on startup
-
-            # Query for healthy keys
-            # Filter by cooldown and daily limit
             now = datetime.datetime.utcnow()
-            
-            # Reset daily counts if it's a new day (UTC)
             today_start = datetime.datetime(now.year, now.month, now.day)
-            
+
             stmt = select(KeyMetadata).where(
                 ((KeyMetadata.status == "active") | (KeyMetadata.cooldown_until < now))
             )
 
             if provider:
                 stmt = stmt.where(KeyMetadata.provider == provider)
-                
-            # Filter logically (we'll do final limit check in python for flexibility)
+
             result = await session.execute(stmt)
             healthy_metadata = result.scalars().all()
-            
+
             if not healthy_metadata:
                 return None
-            
-            # Check limits and return healthiest
-            # Order by fail_count, then last_used
-            healthy_metadata.sort(key=lambda x: (x.fail_count, x.last_used_timestamp or datetime.datetime.min))
-            
-            for meta in healthy_metadata:
-                # Find corresponding Key object for limit
-                key_obj = next((k for k in self.keys if k.key_hash == meta.api_key_hash), None)
-                if not key_obj: continue
-                
-                # Check daily limit
+
+            # Map metadata by hash for quick lookup
+            meta_map = {m.api_key_hash: m for m in healthy_metadata}
+
+            # Build usable keys grouped by priority
+            priority_groups: Dict[int, List[tuple[Key, KeyMetadata]]] = {}
+
+            for key in self.keys:
+                meta = meta_map.get(key.key_hash)
+                if not meta:
+                    continue
+
+                # Daily limit handling
                 reset_needed = meta.last_reset_date < today_start
                 current_count = 0 if reset_needed else meta.daily_request_count
-                
-                if key_obj.daily_limit and current_count >= key_obj.daily_limit:
+
+                if key.daily_limit and current_count >= key.daily_limit:
                     if reset_needed:
-                        # Reset if it's a new day
-                        await session.execute(update(KeyMetadata).where(KeyMetadata.id == meta.id).values(
-                            daily_request_count=0,
-                            last_reset_date=now
-                        ))
+                        await session.execute(
+                            update(KeyMetadata)
+                            .where(KeyMetadata.id == meta.id)
+                            .values(
+                                daily_request_count=0,
+                                last_reset_date=now
+                            )
+                        )
                     else:
-                        continue # Skip this key, limit reached
-                
-                return key_obj
-        
-        return None
+                        continue
+
+                priority_groups.setdefault(meta.priority, []).append((key, meta))
+
+            if not priority_groups:
+                return None
+
+            # Iterate priorities (P1 first)
+            for priority in sorted(priority_groups.keys()):
+                group = priority_groups[priority]
+
+                if not group:
+                    continue
+
+                # Sort slightly by health (optional but recommended)
+                group.sort(key=lambda x: x[1].fail_count)
+
+                # Round robin starting point
+                start_idx = self.priority_indices[priority]
+
+                for i in range(len(group)):
+                    idx = (start_idx + i) % len(group)
+                    key, meta = group[idx]
+
+                    # Skip very unhealthy keys (tunable threshold)
+                    if meta.fail_count >= 5:
+                        continue
+
+                    # Advance pointer for next call
+                    self.priority_indices[priority] = (idx + 1) % len(group)
+
+                    return key
+
+            return None
 
     async def mark_fail(self, key: Key, cooldown_seconds: int = 60):
         """Marks a key as failed and puts it into cooldown."""
