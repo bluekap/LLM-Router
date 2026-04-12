@@ -2,35 +2,37 @@
   "groq": [
     {
       "model_id": "llama3-70b-8192",
-      "api_key": "YOUR_GROQ_API_KEY_1",
+      "api_key": "<GROQ_API_KEY_1>",
       "priority": 1,
       "daily_limit": 1000
     },
     {
       "model_id": "llama3-8b-8192",
-      "api_key": "YOUR_GROQ_API_KEY_2",
-      "priority": 1
+      "api_key": "<GROQ_API_KEY_2>",
+      "priority": 2,
+      "daily_limit": 14400
     }
   ],
   "gemini": [
     {
       "model_id": "gemini-1.5-pro",
-      "api_key": "YOUR_GEMINI_API_KEY",
+      "api_key": "<GEMINI_API_KEY>",
       "priority": 1,
-      "daily_limit": 100
+      "daily_limit": 50
     }
   ],
   "mistral": [
     {
       "model_id": "mistral-large-latest",
-      "api_key": "YOUR_MISTRAL_API_KEY",
-      "priority": 1
+      "api_key": "<MISTRAL_API_KEY>",
+      "priority": 1,
+      "daily_limit": 86400
     }
   ],
   "openrouter": [
     {
       "model_id": "openrouter/free",
-      "api_key": "YOUR_OPENROUTER_API_KEY",
+      "api_key": "<OPENROUTER_API_KEY>",
       "priority": 2,
       "daily_limit": 50
     }
@@ -38,20 +40,23 @@
   "cerebras": [
     {
       "model_id": "cerebras-llama3.1-70b",
-      "api_key": "YOUR_CEREBRAS_API_KEY",
-      "priority": 1
+      "api_key": "<CEREBRAS_API_KEY>",
+      "priority": 1,
+      "daily_limit": 1700
     }
   ],
   "github": [
     {
       "model_id": "gpt-4o",
-      "api_key": "YOUR_GITHUB_MODELS_TOKEN",
-      "priority": 1
+      "api_key": "<GITHUB_MODELS_TOKEN>",
+      "priority": 1,
+      "daily_limit": 150
     },
     {
       "model_id": "deepseek/DeepSeek-V3-0324",
-      "api_key": "YOUR_GITHUB_MODELS_TOKEN",
-      "priority": 1
+      "api_key": "<GITHUB_MODELS_TOKEN>",
+      "priority": 1,
+      "daily_limit": 150
     }
   ]
 }
