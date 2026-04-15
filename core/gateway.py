@@ -26,7 +26,8 @@ class LLMGateway:
             "github": "openai",
             "gemini": "gemini",
             "groq": "groq",
-            "cerebras": "cerebras"
+            "cerebras": "cerebras",
+            "openrouter": "openrouter"
         }
         
         prefix = provider_prefix_map.get(provider)
@@ -94,12 +95,27 @@ class LLMGateway:
         last_exception = None
         
         # Pre-compute request data once outside the retry loop to improve efficiency
-        messages_dict = [m.dict() for m in request.messages]
+        # Strip reasoning_content from messages as some providers (e.g. Groq with LLaMA) reject it
+        messages_dict = []
+        for msg in request.messages:
+            msg_copy = dict(msg)
+            if "reasoning_content" in msg_copy:
+                del msg_copy["reasoning_content"]
+            messages_dict.append(msg_copy)
+            
         extra_body = request.extra_body or {}
+
+        # If model is 'router', we ignore it and route globally (round-robin)
+        # Otherwise, we filter keys by the specific model requested
+        target_model = request.model
+        if target_model == "router":
+            target_model = None
         
         while retries < max_retries:
-            key = await self.key_manager.get_healthiest_key()
+            key = await self.key_manager.get_healthiest_key(model_id=target_model)
             if not key:
+                if target_model:
+                    raise Exception(f"No healthy keys available for model '{target_model}'.")
                 raise Exception("No healthy keys available in the pool.")
 
             start_time = time.time()
@@ -108,7 +124,7 @@ class LLMGateway:
                 
                 # Use litellm with selected key
                 # We ensure the model has the correct provider prefix for LiteLLM
-                requested_model = request.model if request.model else key.model_id
+                requested_model = target_model if target_model else key.model_id
                 model_to_use = self._resolve_model_name(key.provider, requested_model)
 
                 # Prepare completion arguments
@@ -122,6 +138,10 @@ class LLMGateway:
                     **extra_body
                 }
                 
+                # Forward any extra attributes provided in the incoming request root
+                if hasattr(request, "model_extra") and request.model_extra:
+                    completion_args.update(request.model_extra)
+
                 if key.provider == "github":
                     completion_args["api_base"] = "https://models.github.ai/inference"
 
@@ -133,6 +153,23 @@ class LLMGateway:
 
                 response = await acompletion(**completion_args)
                 
+                # If streaming, evaluate the first chunk to catch any immediate exceptions (e.g. rate limit) before returning
+                first_chunk = None
+                if request.stream:
+                    if hasattr(response, '__anext__'):
+                        first_chunk = await response.__anext__()
+                    else:
+                        first_chunk = await response.__aiter__().__anext__()
+                        
+                    async def stream_generator():
+                        yield first_chunk
+                        async for c in response:
+                            yield c
+                            
+                    final_response = stream_generator()
+                else:
+                    final_response = response
+
                 latency = (time.time() - start_time) * 1000
                 
                 # Check for rate limits even on successful requests (the 'Header' trick)
@@ -160,14 +197,15 @@ class LLMGateway:
                     await self.key_manager.reset_fail(key)
                 
                 await self.key_manager.update_usage(key)
-                await self._log_request(key, model_to_use, response, latency, 200)
+                await self._log_request(key, model_to_use, final_response, latency, 200)
                 
-                return response
+                return final_response
                 
-            except (exceptions.RateLimitError, exceptions.ServiceUnavailableError, exceptions.APIError) as e:
+            except (exceptions.RateLimitError, exceptions.ServiceUnavailableError, exceptions.APIError, getattr(exceptions, 'MidStreamFallbackError', Exception)) as e:
                 latency = (time.time() - start_time) * 1000
                 logger.warning(f"Request failed with {key.provider}: {str(e)}")
                 
+
                 # Extract headers and use them for cooldown
                 headers = self._extract_headers(e)
                 reset = headers.get('x-ratelimit-reset-requests') or headers.get('x-ratelimit-reset')

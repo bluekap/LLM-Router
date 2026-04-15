@@ -1,39 +1,23 @@
-import requests
-import json
-import time
+import asyncio
+from schemas import ChatCompletionRequest, Message
+from core.gateway import LLMGateway
+from core.key_manager import KeyManager
 
-BASE_URL = "http://localhost:8000"
-
-def test_health():
-    print("Checking health...")
-    response = requests.get(f"{BASE_URL}/health")
-    print(json.dumps(response.json(), indent=2))
-
-def test_chat():
-    print(f"\nSending chat request (letting gateway auto-select model)...")
-    payload = {
-        "messages": [
-            {"role": "user", "content": "Explain quantum entanglement in one sentence."}
-        ]
-    }
-
+async def main():
+    km = KeyManager()
+    km.keys.append(type('obj', (object,), {'provider': 'gemini', 'model_id': 'gemini-1.5-flash-preview', 'api_key': 'dummy', 'key_hash': 'h', 'priority': 1, 'daily_limit': None})())
     
-    start = time.time()
-    response = requests.post(f"{BASE_URL}/v1/chat/completions", json=payload)
-    latency = (time.time() - start) * 1000
+    gateway = LLMGateway(km)
+    req = ChatCompletionRequest(
+        model="gemini-1.5-flash-preview",
+        messages=[Message(role="user", content="hello")],
+        stream=False
+    )
     
-    if response.status_code == 200:
-        print(f"Success! Latency: {latency:.2f}ms")
-        print("Response:", response.json()["choices"][0]["message"]["content"])
-    else:
-        print(f"Error {response.status_code}: {response.text}")
-
-if __name__ == "__main__":
-    # Note: Make sure the server is running (python main.py)
-    # And keys.json is populated with at least one valid key.
     try:
-        test_health()
-        test_chat()
-        test_health() # See if usage count increased
-    except requests.exceptions.ConnectionError:
-        print("Error: Could not connect to gateway. Is it running on port 8000?")
+        resp = await gateway.chat_completion(req)
+        print("Response:", resp)
+    except Exception as e:
+        print("Error:", type(e), str(e))
+
+asyncio.run(main())

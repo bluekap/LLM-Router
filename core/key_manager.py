@@ -114,7 +114,7 @@ class KeyManager:
             logger.info(f"[sync] DB sync complete — {len(self.keys)} active keys | +{added} added | -{removed} removed")
 
     
-    async def get_healthiest_key(self, provider: Optional[str] = None) -> Optional[Key]:
+    async def get_healthiest_key(self, provider: Optional[str] = None, model_id: Optional[str] = None) -> Optional[Key]:
         """
         Selects the best available API key using a priority-aware round-robin strategy.
 
@@ -133,11 +133,13 @@ class KeyManager:
 
         Additional behavior:
         - If a provider is specified, only keys matching that provider are considered.
+        - If a model_id is specified, only keys matching that model_id are considered.
         - Round-robin state is maintained per priority tier using an in-memory index.
         - If no valid keys are available in any priority tier, returns None.
 
         Args:
             provider (Optional[str]): Optional provider filter (e.g., "openai", "anthropic").
+            model_id (Optional[str]): Optional model filter (e.g., "gpt-4", "llama-3-8b").
 
         Returns:
             Optional[Key]: The selected Key object, or None if no valid key is available.
@@ -152,6 +154,9 @@ class KeyManager:
 
             if provider:
                 stmt = stmt.where(KeyMetadata.provider == provider)
+            
+            if model_id:
+                stmt = stmt.where(KeyMetadata.model_id == model_id)
 
             result = await session.execute(stmt)
             healthy_metadata = result.scalars().all()
@@ -208,10 +213,6 @@ class KeyManager:
                 for i in range(len(group)):
                     idx = (start_idx + i) % len(group)
                     key, meta = group[idx]
-
-                    # Skip very unhealthy keys (tunable threshold)
-                    if meta.fail_count >= 5:
-                        continue
 
                     # Advance pointer for next call
                     self.priority_indices[priority] = (idx + 1) % len(group)

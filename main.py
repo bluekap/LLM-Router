@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from core.key_manager import KeyManager
 from core.gateway import LLMGateway
-from schemas import ChatCompletionRequest, ChatCompletionResponse, HealthStatus
+from schemas import ChatCompletionRequest, ChatCompletionResponse, HealthStatus, ModelCard, ModelList
 from db.database import engine, Base, AsyncSessionLocal
 from db.models import KeyMetadata, RequestLog
 from sqlalchemy import select, func
@@ -37,14 +37,49 @@ async def dashboard():
     with open("static/dashboard.html", "r") as f:
         return f.read()
 
-@app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
+from fastapi.responses import StreamingResponse
+
+@app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
     try:
         response = await gateway.chat_completion(request)
+        if getattr(request, "stream", False):
+            # If the user requested streaming, we need to return a server-sent events stream
+            async def generate():
+                async for chunk in response:
+                    # Litellm chunk objects usually have model_dump_json or json method
+                    chunk_json = chunk.model_dump_json() if hasattr(chunk, "model_dump_json") else chunk.json()
+                    yield f"data: {chunk_json}\n\n"
+                yield "data: [DONE]\n\n"
+            return StreamingResponse(generate(), media_type="text/event-stream")
+        
+        # Non-streaming response: convert litigation model to standard dictionary
+        if hasattr(response, "model_dump"):
+            return response.model_dump()
+        elif hasattr(response, "dict"):
+            return response.dict()
         return response
     except Exception as e:
         logger.error(f"Gateway error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/v1/models", response_model=ModelList)
+async def list_models():
+    # Gather distinct models from configuration
+    models = set(key.model_id for key in key_manager.keys)
+    models.add("router") # Built-in model routing
+    
+    current_time = int(datetime.datetime.now().timestamp())
+    
+    data = []
+    for m in models:
+        data.append(ModelCard(
+            id=m,
+            created=current_time,
+            owned_by="llm-router"
+        ))
+    
+    return ModelList(data=data)
 
 @app.get("/health", response_model=HealthStatus)
 async def health():
@@ -54,8 +89,9 @@ async def health():
         result = await session.execute(stmt)
         all_keys = result.scalars().all()
         
-        active_keys = [k for k in all_keys if k.status == "active"]
-        cooldown_keys = [k for k in all_keys if k.status == "cooldown"]
+        now = datetime.datetime.utcnow()
+        active_keys = [k for k in all_keys if k.status == "active" or (k.status == "cooldown" and k.cooldown_until and k.cooldown_until < now)]
+        cooldown_keys = [k for k in all_keys if k.status == "cooldown" and not (k.cooldown_until and k.cooldown_until < now)]
         
         # Get total requests today
         today_start = datetime.datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -71,7 +107,11 @@ async def health():
             if k.provider not in provider_health:
                 provider_health[k.provider] = {"active": 0, "cooldown": 0, "fail_count": 0, "keys": []}
             
-            if k.status == "active":
+            eff_status = k.status
+            if k.status == "cooldown" and k.cooldown_until and k.cooldown_until < now:
+                eff_status = "active"
+                
+            if eff_status == "active":
                 provider_health[k.provider]["active"] += 1
             else:
                 provider_health[k.provider]["cooldown"] += 1
@@ -80,7 +120,7 @@ async def health():
             provider_health[k.provider]["keys"].append({
                 "hash": k.api_key_hash[:8] if k.api_key_hash else "unknown",
                 "model_id": k.model_id,
-                "status": k.status,
+                "status": eff_status,
                 "fail_count": k.fail_count,
                 "daily_requests": k.daily_request_count,
                 "daily_limit": key_limit_map.get(k.api_key_hash),
@@ -117,4 +157,4 @@ if __name__ == "__main__":
         # Remove the argument so uvicorn doesn't complain if it parses args (though it usually doesn't here)
         sys.argv.remove("--reset-db")
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000)
+    uvicorn.run("main:app", host="127.0.0.1", port=8000)

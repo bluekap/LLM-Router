@@ -1,19 +1,16 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Any, Dict
 
-class Message(BaseModel):
-    role: str
-    content: str
-
 class ChatCompletionRequest(BaseModel):
-    model: Optional[str] = None
-    messages: List[Message]
+    model: Optional[str] = "router"
+    messages: List[Dict[str, Any]]
     temperature: Optional[float] = 1.0
     max_tokens: Optional[int] = None
     stream: Optional[bool] = False
     extra_body: Optional[Dict[str, Any]] = None
 
     model_config = {
+        "extra": "allow",
         "json_schema_extra": {
             "example": {
                 "messages": [
@@ -27,8 +24,8 @@ class ChatCompletionRequest(BaseModel):
     }
 
 class Choice(BaseModel):
-    message: Message
-    finish_reason: str
+    message: Dict[str, Any]
+    finish_reason: Optional[str] = None
     index: int
 
 class Usage(BaseModel):
@@ -52,3 +49,13 @@ class HealthStatus(BaseModel):
     active_model_list: List[str]
     total_requests_today: int
     provider_health: Dict[str, Any]
+
+class ModelCard(BaseModel):
+    id: str
+    object: str = "model"
+    created: int
+    owned_by: str
+
+class ModelList(BaseModel):
+    object: str = "list"
+    data: List[ModelCard]
