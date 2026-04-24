@@ -81,9 +81,9 @@ class LLMGateway:
             return max(int(val), 1)
         except Exception:
             return 60
-    async def chat_completion(self, request: ChatCompletionRequest) -> Dict[str, Any]:
+    async def chat_completion(self, request: ChatCompletionRequest, forced_key: Optional[Key] = None) -> Dict[str, Any]:
         retries = 0
-        max_retries = min(len(self.key_manager.keys), 5) # Try up to 5 keys or total available
+        max_retries = min(len(self.key_manager.keys), 5) if not forced_key else 1
         
         last_exception = None
         
@@ -105,7 +105,11 @@ class LLMGateway:
             target_model = None
         
         while retries < max_retries:
-            key = await self.key_manager.get_healthiest_key(model_id=target_model)
+            if forced_key:
+                key = forced_key
+            else:
+                key = await self.key_manager.get_healthiest_key(model_id=target_model)
+                
             if not key:
                 if target_model:
                     raise Exception(f"No healthy keys available for model '{target_model}'.")
@@ -143,17 +147,11 @@ class LLMGateway:
                 # Copy key_extra_params to avoid modifying the original Key object
                 working_extra_params = key_extra_params.copy()
                 
-                # 1. Handle api_base specifically: ensure /chat/completions suffix for OpenAI-compatible providers
-                api_base = working_extra_params.get("api_base")
-                if api_base:
-                    # We check both litellm_prefix and provider to be safe
-                    is_openai_compatible = (key.litellm_prefix == "openai" or key.provider == "openai" or 
-                                          key.provider == "nvidia" or key.provider == "github")
-                    if is_openai_compatible:
-                        if not api_base.endswith("/chat/completions") and not api_base.endswith("/completions"):
-                            api_base = api_base.rstrip("/") + "/chat/completions"
-                            working_extra_params["api_base"] = api_base
+                # 1. Pass api_base as-is (e.g. "https://integrate.api.nvidia.com/v1")
+                # LiteLLM's openai-compatible provider internally appends /chat/completions —
+                # manually adding it here would double the path and cause a 404.
                 
+
                 # 2. Merge extra_body: request-level < key-level
                 final_extra_body = extra_body.copy()
                 if "extra_body" in working_extra_params:

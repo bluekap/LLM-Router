@@ -8,3 +8,4 @@ keys.json
 llm
 PROJECT_GUIDELINES.md
 .gemini/
+tests/logs/
