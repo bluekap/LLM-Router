@@ -50,7 +50,20 @@ async def test_key(key_obj: Any, model_id: str, test_message: str = "hi") -> Dic
 
         result["status"] = "success"
         result["latency_ms"] = round(latency, 2)
-        result["response"] = str(response)[:100] if response else None
+        
+        # Extract content to verify it's not empty
+        content = ""
+        reasoning = None
+        if hasattr(response, "choices") and len(response.choices) > 0:
+            msg = response.choices[0].message
+            content = getattr(msg, "content", "") or ""
+            reasoning = getattr(msg, "reasoning_content", None)
+            
+        result["response"] = (content[:50] + "...") if content else (("[Reasoning Only]" if reasoning else "EMPTY"))
+        
+        if not content and not reasoning:
+            result["status"] = "failed"
+            result["error"] = "Empty response content"
 
         if hasattr(response, "usage"):
             result["tokens_used"] = getattr(response.usage, "total_tokens", 0)

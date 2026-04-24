@@ -152,13 +152,11 @@ class LLMGateway:
                 # manually adding it here would double the path and cause a 404.
                 
 
-                # 2. Merge extra_body: request-level < key-level
+                # 2. Merge extra_body: request-level < key-level (keys.json has high priority)
                 final_extra_body = extra_body.copy()
-                if "extra_body" in working_extra_params:
-                    # Key-level extra_body takes precedence if there's a conflict
-                    key_extra_body = working_extra_params.pop("extra_body")
-                    if isinstance(key_extra_body, dict):
-                        final_extra_body.update(key_extra_body)
+                key_extra_body = working_extra_params.pop("extra_body", {}) or {}
+                if isinstance(key_extra_body, dict):
+                    final_extra_body.update(key_extra_body)
                 
                 if final_extra_body:
                     completion_args["extra_body"] = final_extra_body
@@ -185,6 +183,21 @@ class LLMGateway:
                     final_response = stream_generator()
                 else:
                     final_response = response
+                    # If the model returns 200 OK but absolutely no content/reasoning,
+                    # we treat it as a failure so the router can fallback to another key.
+                    if hasattr(response, "choices") and len(response.choices) > 0:
+                        msg = response.choices[0].message
+                        content = getattr(msg, "content", "")
+                        reasoning = getattr(msg, "reasoning_content", None)
+                        if not content and not reasoning:
+                            logger.warning(f"Model {model_to_use} returned empty content. Moving ahead to next key...")
+                            # Raise exception to trigger the retry loop
+                            raise exceptions.APIError(
+                                message="Empty response from model",
+                                model=model_to_use,
+                                llm_provider=key.provider
+                            )
+
 
                 latency = (time.time() - start_time) * 1000
                 
