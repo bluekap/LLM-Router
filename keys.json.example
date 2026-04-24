@@ -103,7 +103,7 @@
       }
     },
     {
-      "model_id": "deepseek-ai/deepseek-v4-pro",
+      "model_id": "deepseek-ai/deepseek-v3.2",
       "api_key": "<NVIDIA_API_KEY>",
       "priority": 1,
       "daily_limit": 8192,

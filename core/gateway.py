@@ -131,16 +131,42 @@ class LLMGateway:
                     "frequency_penalty": request.frequency_penalty,
                     "max_tokens": request.max_tokens,
                     "stream": request.stream,
-                    **extra_body
                 }
                 
                 # Forward any extra attributes provided in the incoming request root
                 if hasattr(request, "model_extra") and request.model_extra:
                     completion_args.update(request.model_extra)
 
-                # Inject arbitrary extra parameters defined in keys.json
-                if getattr(key, "extra_params", None):
-                    completion_args.update(key.extra_params)
+                # Handle extra parameters and body merging
+                key_extra_params = getattr(key, "extra_params", {}) or {}
+                
+                # Copy key_extra_params to avoid modifying the original Key object
+                working_extra_params = key_extra_params.copy()
+                
+                # 1. Handle api_base specifically: ensure /chat/completions suffix for OpenAI-compatible providers
+                api_base = working_extra_params.get("api_base")
+                if api_base:
+                    # We check both litellm_prefix and provider to be safe
+                    is_openai_compatible = (key.litellm_prefix == "openai" or key.provider == "openai" or 
+                                          key.provider == "nvidia" or key.provider == "github")
+                    if is_openai_compatible:
+                        if not api_base.endswith("/chat/completions") and not api_base.endswith("/completions"):
+                            api_base = api_base.rstrip("/") + "/chat/completions"
+                            working_extra_params["api_base"] = api_base
+                
+                # 2. Merge extra_body: request-level < key-level
+                final_extra_body = extra_body.copy()
+                if "extra_body" in working_extra_params:
+                    # Key-level extra_body takes precedence if there's a conflict
+                    key_extra_body = working_extra_params.pop("extra_body")
+                    if isinstance(key_extra_body, dict):
+                        final_extra_body.update(key_extra_body)
+                
+                if final_extra_body:
+                    completion_args["extra_body"] = final_extra_body
+
+                # 3. Inject remaining extra parameters (like api_base, etc.)
+                completion_args.update(working_extra_params)
 
                 response = await acompletion(**completion_args)
 
