@@ -5,6 +5,9 @@ class ChatCompletionRequest(BaseModel):
     model: Optional[str] = "router"
     messages: List[Dict[str, Any]]
     temperature: Optional[float] = 1.0
+    top_p: Optional[float] = 1.0
+    top_k: Optional[int] = None
+    frequency_penalty: Optional[float] = 0.0
     max_tokens: Optional[int] = None
     stream: Optional[bool] = False
     extra_body: Optional[Dict[str, Any]] = None

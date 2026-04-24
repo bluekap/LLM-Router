@@ -15,12 +15,14 @@ from collections import defaultdict
 logger = logging.getLogger("LLM-Gateway")
 
 class Key:
-    def __init__(self, provider: str, model_id: str, api_key: str, priority: int = 1, daily_limit: Optional[int] = None, key_index: int = 0):
+    def __init__(self, provider: str, model_id: str, api_key: str, priority: int = 1, daily_limit: Optional[int] = None, key_index: int = 0, **kwargs):
         self.provider = provider
         self.model_id = model_id
         self.api_key = api_key
         self.priority = priority
         self.daily_limit = daily_limit
+        self.litellm_prefix = kwargs.pop("litellm_prefix", None)
+        self.extra_params = kwargs
         # Combine provider, model_id, api_key, and an index to guarantee uniqueness even for identical placeholder keys
         hash_input = f"{self.provider}:{self.model_id}:{self.api_key}:{key_index}"
         self.key_hash = hashlib.sha256(hash_input.encode()).hexdigest()

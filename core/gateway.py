@@ -19,19 +19,11 @@ class LLMGateway:
         self.key_manager = key_manager
 
     @staticmethod
-    def _resolve_model_name(provider: str, requested_model: str) -> str:
+    def _resolve_model_name(key: Key, requested_model: str) -> str:
         """Resolve the model name with the correct LiteLLM provider prefix."""
-        # Map specific providers to their required LiteLLM prefix
-        provider_prefix_map = {
-            "github": "openai",
-            "gemini": "gemini",
-            "groq": "groq",
-            "cerebras": "cerebras",
-            "openrouter": "openrouter",
-            "nvidia": "openai"
-        }
+        # Use litellm_prefix if defined, otherwise fallback to provider name
+        prefix = key.litellm_prefix or key.provider
         
-        prefix = provider_prefix_map.get(provider)
         if prefix and not requested_model.startswith(f"{prefix}/"):
             return f"{prefix}/{requested_model}"
             
@@ -126,7 +118,7 @@ class LLMGateway:
                 # Use litellm with selected key
                 # We ensure the model has the correct provider prefix for LiteLLM
                 requested_model = target_model if target_model else key.model_id
-                model_to_use = self._resolve_model_name(key.provider, requested_model)
+                model_to_use = self._resolve_model_name(key, requested_model)
 
                 # Prepare completion arguments
                 completion_args = {
@@ -134,6 +126,9 @@ class LLMGateway:
                     "messages": messages_dict,
                     "api_key": key.api_key,
                     "temperature": request.temperature,
+                    "top_p": request.top_p,
+                    "top_k": request.top_k,
+                    "frequency_penalty": request.frequency_penalty,
                     "max_tokens": request.max_tokens,
                     "stream": request.stream,
                     **extra_body
@@ -143,19 +138,12 @@ class LLMGateway:
                 if hasattr(request, "model_extra") and request.model_extra:
                     completion_args.update(request.model_extra)
 
-                if key.provider == "github":
-                    completion_args["api_base"] = "https://models.github.ai/inference"
-
-                if key.provider == "nvidia":
-                    completion_args["api_base"] = "https://integrate.api.nvidia.com/v1"
-
-                # For Gemini AI Studio, LiteLLM sometimes needs GEMINI_API_KEY or GOOGLE_API_KEY.
-                # Passing it as api_key with the gemini/ prefix should work, 
-                # but we'll be explicit if it helps the driver.
-                if key.provider == "gemini":
-                    completion_args["gemini_api_key"] = key.api_key
+                # Inject arbitrary extra parameters defined in keys.json
+                if getattr(key, "extra_params", None):
+                    completion_args.update(key.extra_params)
 
                 response = await acompletion(**completion_args)
+
                 
                 # If streaming, evaluate the first chunk to catch any immediate exceptions (e.g. rate limit) before returning
                 first_chunk = None

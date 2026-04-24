@@ -1,4 +1,12 @@
 {
+  "openai": [
+    {
+      "model_id": "gpt-4o",
+      "api_key": "<OPENAI_API_KEY>",
+      "priority": 1,
+      "daily_limit": 1000
+    }
+  ],
   "groq": [
     {
       "model_id": "llama3-70b-8192",
@@ -50,13 +58,17 @@
       "model_id": "gpt-4o",
       "api_key": "<GITHUB_MODELS_TOKEN>",
       "priority": 1,
-      "daily_limit": 150
+      "daily_limit": 150,
+      "api_base": "https://models.github.ai/inference",
+      "litellm_prefix": "openai"
     },
     {
       "model_id": "deepseek/DeepSeek-V3-0324",
       "api_key": "<GITHUB_MODELS_TOKEN>",
       "priority": 1,
-      "daily_limit": 150
+      "daily_limit": 150,
+      "api_base": "https://models.github.ai/inference",
+      "litellm_prefix": "openai"
     }
   ],
   "nvidia": [
@@ -64,13 +76,44 @@
       "model_id": "minimaxai/minimax-m2.5",
       "api_key": "<NVIDIA_API_KEY>",
       "priority": 1,
-      "daily_limit": 1000
+      "daily_limit": 1000,
+      "api_base": "https://integrate.api.nvidia.com/v1",
+      "litellm_prefix": "openai"
     },
     {
       "model_id": "nvidia/llama-3.1-405b-instruct",
       "api_key": "<NVIDIA_API_KEY>",
       "priority": 2,
-      "daily_limit": 500
+      "daily_limit": 500,
+      "api_base": "https://integrate.api.nvidia.com/v1",
+      "litellm_prefix": "openai"
+    },
+    {
+      "model_id": "z-ai/glm4.7",
+      "api_key": "<NVIDIA_API_KEY>",
+      "priority": 1,
+      "daily_limit": 16384,
+      "api_base": "https://integrate.api.nvidia.com/v1",
+      "litellm_prefix": "openai",
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false,
+          "clear_thinking": true
+        }
+      }
+    },
+    {
+      "model_id": "deepseek-ai/deepseek-v4-pro",
+      "api_key": "<NVIDIA_API_KEY>",
+      "priority": 1,
+      "daily_limit": 8192,
+      "api_base": "https://integrate.api.nvidia.com/v1",
+      "litellm_prefix": "openai",
+      "extra_body": {
+        "chat_template_kwargs": {
+          "thinking": false
+        }
+      }
     }
   ]
 }
