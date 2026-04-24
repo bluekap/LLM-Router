@@ -362,7 +362,7 @@
                                 if (limit) {
                                     const pct = Math.min(100, Math.round((used / limit) * 100));
                                     const color = pct >= 90 ? 'var(--error)' : pct >= 60 ? 'var(--warning)' : 'var(--success)';
-                                    const liveBadge = liveRemaining != null
+                                    const liveBadge = (liveRemaining != null && liveRemaining !== 999)
                                         ? `<span style="color:var(--primary);font-weight:600;">· ${liveRemaining} API remaining</span>`
                                         : '';
                                     return `

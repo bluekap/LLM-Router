@@ -224,10 +224,23 @@ class KeyManager:
             return None
 
     async def mark_fail(self, key: Key, cooldown_seconds: int = 60):
-        """Marks a key as failed and puts it into cooldown."""
+        """Marks a key as failed and puts it into cooldown with exponential backoff."""
         async with AsyncSessionLocal() as session:
-            now = datetime.datetime.utcnow()
-            cooldown_until = now + datetime.timedelta(seconds=cooldown_seconds)
+            # Get current fail count to calculate exponential backoff
+            result = await session.execute(select(KeyMetadata).where(KeyMetadata.api_key_hash == key.key_hash))
+            current_metadata = result.scalar_one()
+            current_fail_count = current_metadata.fail_count
+            
+            # Calculate exponential backoff: 30s, 1min, 2min, 4min, 8min, 16min, max 1 hour
+            if current_fail_count == 0:
+                # First failure - 30 seconds
+                backoff_seconds = 30
+            else:
+                # Exponential backoff: 2^current_fail_count minutes, max 60 minutes
+                backoff_minutes = min(2 ** current_fail_count, 60)
+                backoff_seconds = backoff_minutes * 60
+            
+            cooldown_until = datetime.datetime.utcnow() + datetime.timedelta(seconds=backoff_seconds)
             
             stmt = update(KeyMetadata).where(KeyMetadata.api_key_hash == key.key_hash).values(
                 status="cooldown",
@@ -236,7 +249,7 @@ class KeyManager:
             )
             await session.execute(stmt)
             await session.commit()
-            print(f"Key {key} marked as COOLDOWN until {cooldown_until}")
+            print(f"Key {key} marked as COOLDOWN until {cooldown_until} (fail_count: {current_fail_count + 1}, backoff: {backoff_seconds}s)")
 
     async def reset_fail(self, key: Key):
         """Resets fail count and sets status to active."""
