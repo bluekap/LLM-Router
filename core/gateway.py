@@ -27,7 +27,8 @@ class LLMGateway:
             "gemini": "gemini",
             "groq": "groq",
             "cerebras": "cerebras",
-            "openrouter": "openrouter"
+            "openrouter": "openrouter",
+            "nvidia": "openai"
         }
         
         prefix = provider_prefix_map.get(provider)
@@ -144,6 +145,9 @@ class LLMGateway:
 
                 if key.provider == "github":
                     completion_args["api_base"] = "https://models.github.ai/inference"
+
+                if key.provider == "nvidia":
+                    completion_args["api_base"] = "https://integrate.api.nvidia.com/v1"
 
                 # For Gemini AI Studio, LiteLLM sometimes needs GEMINI_API_KEY or GOOGLE_API_KEY.
                 # Passing it as api_key with the gemini/ prefix should work, 
